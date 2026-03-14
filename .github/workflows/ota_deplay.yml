@@ -1,0 +1,43 @@
+name: Compilar y Publicar OTA
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions: # Importante para que el robot pueda escribir
+      contents: write
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Instalar PlatformIO
+        run: |
+          python -m pip install --upgrade pip
+          pip install platformio
+
+      - name: Generar version.txt y Compilar
+        run: |
+          echo ${{ github.run_number }} > version.txt
+          pio run
+        env:
+          # Inyectamos el número de versión al compilador
+          PLATFORMIO_BUILD_FLAGS: -DVERSION_AUTO=\"${{ github.run_number }}\"
+
+      - name: Subir version.txt al repositorio
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add version.txt
+          git commit -m "Actualizando versión a ${{ github.run_number }} [skip ci]"
+          git push
+        # [skip ci] evita que el robot se dispare a sí mismo infinitamente
+
+      - name: Crear Release Automático
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ github.run_number }}
+          files: .pio/build/esp32-s3-devkitc-1/firmware.bin
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
