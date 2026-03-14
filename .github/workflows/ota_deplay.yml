@@ -38,6 +38,9 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           tag_name: v${{ github.run_number }}
-          files: .pio/build/esp32-s3-devkitc-1/firmware.bin
+          files: 
+            .pio/build/esp32-s3-devkitc-1/firmware.bin
+            .pio/build/esp32-s3-devkitc-1/bootloader.bin
+            .pio/build/esp32-s3-devkitc-1/partitions.bin
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
