@@ -538,6 +538,7 @@
                 "SD_MOSI=6",
                 "SD_MISO=5",
                 "SD_SCLK=7",
+                "arduino_h=Arduino_h",
                 "HAVE_CONFIG_H",
                 "MBEDTLS_CONFIG_FILE=\"mbedtls/esp_config.h\"",
                 "UNITY_INCLUDE_CONFIG_H",
@@ -557,6 +558,10 @@
             ],
             "cStandard": "gnu99",
             "cppStandard": "gnu++11",
+            "forcedInclude": [
+                "/home/codespace/.platformio/packages/framework-arduinoespressif32/cores/esp32/Arduino.h",
+                ""
+            ],
             "compilerPath": "/home/codespace/.platformio/packages/toolchain-xtensa-esp32s3/bin/xtensa-esp32s3-elf-gcc",
             "compilerArgs": [
                 "-mlongcalls",
