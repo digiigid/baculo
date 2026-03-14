@@ -5,6 +5,9 @@
 #include "com_eth.h"
 #include "SDManager.h"
 
+#ifndef Arduino_h
+#define Arduino_h // Esto engaña a la librería BMI160 para que crea que ya incluyó arduino.h
+#endif
 
 /************************************************************************************
 # REFERENCIA DE LA CONTROLADORA: https://www.waveshare.com/wiki/ESP32-S3-ETH
