@@ -1,158 +1,130 @@
 #ifndef INCLINE_MANAGER_H
 #define INCLINE_MANAGER_H
 
-#include <DFRobot_BMI160.h>
+#include <BMI160Gen.h>
+#include <Arduino.h>
+#include <Wire.h>
 #include "icons.h"
 #include "systemData.h"
 
 extern SystemData sys;
 
-class InclineManager
+class InclineManager 
 {
 private:
-  DFRobot_BMI160 *_bmi;
-  bool _ready = false;
-  float _vibration = 0.0f;
-  float _peakAccel = 0.0f;
-  float _currentAngle = 0.0f;
-  unsigned long _lastUpdate = 0;
-  unsigned long _lastAttempt = 0;
-  bool _firstInitDone = false;
+    bool _ready = false; 
+    float _vibration = 0.0f;
+    float _peakAccel = 0.0f;
+    float _currentAngle = 0.0f;
+    unsigned long _lastUpdate = 0;
+    unsigned long _lastAttempt = 0;
+    bool _firstInitDone = false;
 
-  // Dirección I2C del BMI160 (0x69 o 0x68)
-  const uint8_t _addr = 0x69;
+    const uint8_t _addr = 0x69;
 
-  bool compruebaSensor()
-  {
-    Wire.beginTransmission(_addr);
-    return (Wire.endTransmission() == 0);
-  }
+    // 🔍 Verifica si el sensor responde en el bus I2C
+    bool compruebaSensor()
+    {
+        Wire.beginTransmission(_addr);
+        return (Wire.endTransmission() == 0);
+    }
 
 public:
-  InclineManager() : _bmi(nullptr), _ready(false) {}
+    InclineManager() : _ready(false) {}
 
-  bool begin()
-  {
-    if (_bmi == nullptr)
-      _bmi = new DFRobot_BMI160();
-
-    // Si no responde al ping I2C, ni lo intentamos
-    if (!compruebaSensor())
-      return false;
-
-    if (_bmi->I2cInit(_addr) != 0)
+    bool begin()
     {
-      _ready = false;
-      return false;
+        if (!compruebaSensor()) return false;
+
+        // 🚀 Inicialización: 0 indica modo I2C, seguido de la dirección
+        BMI160.begin(0, _addr); 
+        
+        // Configura el rango a 2g para máxima sensibilidad en inclinación
+        BMI160.setAccelerometerRange(2); 
+        
+        _ready = true;
+        if (!_firstInitDone) {
+            Serial.println("[BMI] Sensor inicializado correctamente.");
+            _firstInitDone = true;
+        }
+        return true;
     }
 
-    _ready = true;
-    if (_firstInitDone)
-    {
-      Serial.println("[BMI] Sensor recuperado.");
-      // log_event(LOG_INFO, "[BMI] Sensor recuperado.");
+    bool update() {
+        unsigned long now = millis();
+
+        if (!_ready) {
+            // Intentar reconectar cada 2 segundos si el sensor se perdió
+            if (now - _lastAttempt > 2000) {
+                _lastAttempt = now;
+                if (compruebaSensor()) {
+                    begin(); 
+                }
+            }
+            return false;
+        }
+
+        // ⏱️ Limitar la frecuencia de muestreo a 50Hz (cada 20ms)
+        if (now - _lastUpdate < 20) return false;
+        _lastUpdate = now;
+
+        // 📥 Lectura de datos crudos usando tipos de 16 bits firmados
+        int ax_raw, ay_raw, az_raw, gx, gy, gz;
+        BMI160.readMotionSensor(ax_raw, ay_raw, az_raw, gx, gy, gz);
+        
+        // 🛡️ Verificación de datos válidos
+        if (ax_raw == 0 && ay_raw == 0 && az_raw == 0) {
+            _ready = false;
+            return false;
+        }
+
+        // 📐 Conversión a Gs (16384 LSB/g para el rango de 2g)
+        float ax = ax_raw / 16384.0f;
+        float ay = ay_raw / 16384.0f;
+        float az = az_raw / 16384.0f;
+
+        // Cálculo del ángulo de inclinación respecto a la vertical
+        float targetAngle = atan2(sqrt(ax * ax + ay * ay), az) * 180.0f / M_PI;
+        
+        // 🌊 Filtro complementario simple para suavizar el movimiento
+        _currentAngle = (_currentAngle * 0.5f) + (targetAngle * 0.5f);
+
+        // 📈 Cálculo de vibración (desviación de la gravedad estática 1.0g)
+        float mag = sqrt(ax * ax + ay * ay + az * az);
+        float delta = abs(mag - 1.0f);
+        _vibration = (_vibration * 0.92f) + (delta * 0.08f);
+
+        // 💥 Detección de picos (impactos)
+        bool impacto = (delta > 0.6f && delta > _peakAccel);
+        if (delta > _peakAccel) _peakAccel = delta;
+        else _peakAccel *= 0.96f; // Decaimiento lento del pico
+
+        // Actualizar datos del sistema
+        sys.sensorBMI = 1;
+        sys.tiltAngle = _currentAngle;
+
+        // Clasificación del nivel de "viento" basado en vibración 🌬️
+        if (_vibration < 0.02f)      sys.windLevel = 0;
+        else if (_vibration < 0.05f) sys.windLevel = 1;
+        else if (_vibration < 0.10f) sys.windLevel = 2;
+        else if (_vibration < 0.20f) sys.windLevel = 3;
+        else                         sys.windLevel = 4;
+
+        return impacto;
     }
-    _firstInitDone = true;
-    return true;
-  }
 
-    // UNIFICADO: Una sola lectura I2C para todos los cálculos
-  bool update() {
-      unsigned long now = millis();
-      bool _wasReady = _ready;
+    // Métodos de acceso
+    float getInclineAngle() { return _ready ? _currentAngle : -99.0f; }
+    float getVibrationValue() { return _vibration; }
+    bool isPresent() { return _ready; }
 
-      // 1. RECONEXIÓN
-      if (!_ready) {
-          if (now - _lastAttempt > 2000) {
-              _lastAttempt = now;
-              if (compruebaSensor()) {
-                  if (begin()) return false; 
-              }
-          }
-          return false;
-      }
-
-      // 2. FRECUENCIA (50Hz)
-      if (now - _lastUpdate < 20) return false;
-      _lastUpdate = now;
-
-      int16_t data[20] = {0};
-      
-      // 3. LECTURA Y DETECCIÓN AGRESIVA
-      // Si la lectura falla o el sensor ya no responde al ping, cortamos YA.
-      int status = _bmi->getAccelGyroData(data);
-      bool busVivo = compruebaSensor();
-      bool datosNulos = (data[3] == 0 && data[4] == 0 && data[5] == 0);
-
-      if (status != 0 || !busVivo || datosNulos) {
-          _ready = false;
-          _lastAttempt = now;
-          
-          // Enviamos el log de inmediato 
-          if (_wasReady) {
-              if (!busVivo){
-                Serial.println("[BMI] Sensor perdido");
-                // log_event(LOG_ERROR, "[BMI] Sensor perdido");
-              
-              } 
-              else if (datosNulos) {
-                Serial.println("[BMI] Sensor perdido (Datos Nulos).");
-                // log_event(LOG_ERROR, "[BMI] Sensor perdido (Datos Nulos).");
-              }
-          }
-          return false;
-      }
-
-      // 4. PROCESAMIENTO (ax, ay, az)
-      float ax = data[3] / 16384.0f;
-      float ay = data[4] / 16384.0f;
-      float az = data[5] / 16384.0f;
-
-      // Ángulo instantáneo (Filtro 0.5f para que la mano y el OLED vayan a la par)
-      float targetAngle = atan2(sqrt(ax * ax + ay * ay), az) * 180.0f / M_PI;
-      _currentAngle = (_currentAngle * 0.5f) + (targetAngle * 0.5f);
-
-      // Magnitud y Vibración
-      float mag = sqrt(ax * ax + ay * ay + az * az);
-      float delta = abs(mag - 1.0f);
-      _vibration = (_vibration * 0.92f) + (delta * 0.08f);
-
-      // Impacto
-      bool impacto = (delta > 0.6f && delta > _peakAccel);
-      if (delta > _peakAccel) _peakAccel = delta;
-      else _peakAccel *= 0.96f;
-
-      // 5. ACTUALIZACIÓN DE ESTRUCTURA GLOBAL SYS
-      sys.sensorBMI = 1;         // Sensor OK
-      sys.tiltAngle = _currentAngle;
-
-      // Mapeo de vibración a windLevel (0 a 4)
-      if (_vibration < 0.02f)      sys.windLevel = 0; // Calma
-      else if (_vibration < 0.05f) sys.windLevel = 1; // Leve
-      else if (_vibration < 0.10f) sys.windLevel = 2; // Mod
-      else if (_vibration < 0.20f) sys.windLevel = 3; // Fuerte
-      else                         sys.windLevel = 4; // Tormenta
-
-      return impacto;
-  }
-
-  // --- Getters Optimizados (Ya no hacen cálculos, solo devuelven el estado) ---
-  float getInclineAngle() { return _ready ? _currentAngle : -99.0f; }
-  float getVibrationValue() { return _vibration; }
-  float getPeakValue() { return _peakAccel; }
-  bool isPresent() { return _ready; }
-  bool detectImpact() { return _peakAccel > 0.6f; }
-
-  const char *getWindLevel()
-  {
-    if (_vibration < 0.02f)
-      return "Calma";
-    if (_vibration < 0.05f)
-      return "Brisa";
-    if (_vibration < 0.12f)
-      return "Moderado";
-    return "¡VENTARRON!";
-  }
+    const char *getWindLevelName()
+    {
+        if (_vibration < 0.02f) return "Calma";
+        if (_vibration < 0.05f) return "Brisa";
+        if (_vibration < 0.12f) return "Moderado";
+        return "¡Fuerte!";
+    }
 };
 
 #endif

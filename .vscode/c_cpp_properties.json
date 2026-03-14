@@ -10,6 +10,7 @@
             "includePath": [
                 "/workspaces/baculo/include",
                 "/workspaces/baculo/src",
+                "/workspaces/baculo/lib/BMI160",
                 "/home/codespace/.platformio/packages/framework-arduinoespressif32/libraries/SD/src",
                 "/home/codespace/.platformio/packages/framework-arduinoespressif32/libraries/FS/src",
                 "/home/codespace/.platformio/packages/framework-arduinoespressif32/libraries/Update/src",
@@ -266,6 +267,7 @@
                 "path": [
                     "/workspaces/baculo/include",
                     "/workspaces/baculo/src",
+                    "/workspaces/baculo/lib/BMI160",
                     "/home/codespace/.platformio/packages/framework-arduinoespressif32/libraries/SD/src",
                     "/home/codespace/.platformio/packages/framework-arduinoespressif32/libraries/FS/src",
                     "/home/codespace/.platformio/packages/framework-arduinoespressif32/libraries/Update/src",
